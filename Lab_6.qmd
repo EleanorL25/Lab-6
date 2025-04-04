@@ -1,5 +1,16 @@
 ------------------------------------------------------------------------
 
+---
+project:
+  title: "csu_ess_lab6"
+  author: "Eleanor Lindsey"
+  output-dir: docs
+  type: website
+format: 
+  html:
+    self-contained: true
+---
+
 ------------------------------------------------------------------------
 
 ```{r}
@@ -60,7 +71,10 @@ What does zero_q_freq mean?
 frequency of days with Q = 0 mm/day. Where Q means daily discharge measured in millimeters per day
 
 ```{r}
-ggplot(data = camels, aes(x = gauge_lon, y = gauge_lat)) +
+
+```
+
+```{ggplot(data = camels, aes(x = gauge_lon, y = gauge_lat)) +}
   borders("state", colour = "gray50") +
   geom_point(aes(color = q_mean)) +
   scale_color_gradient(low = "lightpink", high = "dodgerblue") +
