@@ -1,0 +1,560 @@
+---
+
+---
+
+```{r}
+options(repos = c(CRAN = "https://cran.rstudio.com/"))
+library(tidyverse)
+library(tidymodels)
+library(ggplot2)
+install.packages('ggthemes')
+install.packages('ggpubr')
+install.packages('powerjoin')
+install.packages('glue')
+install.packages('vip')
+install.packages('baguette')
+install.packages('ranger')
+install.packages('xgboost')
+library(ggthemes)
+library(ggpubr)
+library(xgboost)
+library(ranger)
+library(powerjoin)
+library(glue)
+library(vip)
+library(baguette)
+```
+
+## Set up
+
+```{r}
+root  <- 'https://gdex.ucar.edu/dataset/camels/file'
+
+download.file('https://gdex.ucar.edu/dataset/camels/file/camels_attributes_v2.0.pdf', 
+              'data/camels_attributes_v2.0.pdf')
+
+```
+
+```{r}
+types <- c("clim", "geol", "soil", "topo", "vege", "hydro")
+
+# Where the files live online ...
+remote_files  <- glue('{root}/camels_{types}.txt')
+# where we want to download the data ...
+local_files   <- glue('data/camels_{types}.txt')
+
+walk2(remote_files, local_files, download.file, quiet = TRUE)
+
+# Read and merge data
+camels <- map(local_files, read_delim, show_col_types = FALSE) 
+```
+
+```{r}
+camels <- power_full_join(camels ,by = 'gauge_id')
+```
+
+## Question 1
+
+What does zero_q_freq mean?
+
+frequency of days with Q = 0 mm/day. Where Q means daily discharge measured in millimeters per day
+
+```{r}
+ggplot(data = camels, aes(x = gauge_lon, y = gauge_lat)) +
+  borders("state", colour = "gray50") +
+  geom_point(aes(color = q_mean)) +
+  scale_color_gradient(low = "lightpink", high = "dodgerblue") +
+  ggthemes::theme_map()
+```
+
+## Question 2
+
+```{r}
+plot_1<-ggplot(data = camels, aes(x = gauge_lon, y = gauge_lat)) +
+  borders("state", colour = "gray50") +
+  geom_point(aes(color = aridity)) +
+  labs(title='Levels of Aridity',
+       x='Longitude',
+       y='Latitude') +
+  scale_color_gradient(low = "dodgerblue", high = "forestgreen") +
+  ggthemes::theme_map()
+
+plot_2 <- ggplot(data = camels, aes(x = gauge_lon, y = gauge_lat)) +
+  borders("state", colour = "gray50") +
+  geom_point(aes(color = p_mean)) +
+  labs(title = 'Mean Daily Precipitation',
+       x = 'Longitude',
+       y = 'Latitude') +
+  scale_color_gradient(low = "purple", high = "pink") +
+  ggthemes::theme_map()
+
+ggarrange(plot_1, plot_2, n_col=2)
+
+```
+
+##Model Preparation
+
+```{r}
+camels |> 
+  select(aridity, p_mean, q_mean) |> 
+  drop_na() |> 
+  cor()
+```
+
+##Visual EDA
+
+```{r}
+# Create a scatter plot of aridity vs rainfall
+ggplot(camels, aes(x = aridity, y = p_mean)) +
+  # Add points colored by mean flow
+  geom_point(aes(color = q_mean)) +
+  # Add a linear regression line
+  geom_smooth(method = "lm", color = "red", linetype = 2) +
+  # Apply the viridis color scale
+  scale_color_viridis_c() +
+  # Add a title, axis labels, and theme (w/ legend on the bottom)
+  theme_linedraw() + 
+  theme(legend.position = "bottom") + 
+  labs(title = "Aridity vs Rainfall vs Runnoff", 
+       x = "Aridity", 
+       y = "Rainfall",
+       color = "Mean Flow")
+```
+
+```{r}
+ggplot(camels, aes(x = aridity, y = p_mean)) +
+  geom_point(aes(color = q_mean)) +
+  geom_smooth(method = "lm") +
+  scale_color_viridis_c() +
+  # Apply log transformations to the x and y axes
+  scale_x_log10() + 
+  scale_y_log10() +
+  theme_linedraw() +
+  theme(legend.position = "bottom") + 
+  labs(title = "Aridity vs Rainfall vs Runnoff", 
+       x = "Aridity", 
+       y = "Rainfall",
+       color = "Mean Flow")
+```
+
+```{r}
+ggplot(camels, aes(x = aridity, y = p_mean)) +
+  geom_point(aes(color = q_mean)) +
+  geom_smooth(method = "lm") +
+  # Apply a log transformation to the color scale
+  scale_color_viridis_c(trans = "log") +
+  scale_x_log10() + 
+  scale_y_log10() +
+  theme_linedraw() +
+  theme(legend.position = "bottom",
+        # Expand the legend width ...
+        legend.key.width = unit(2.5, "cm"),
+        legend.key.height = unit(.5, "cm")) + 
+  labs(title = "Aridity vs Rainfall vs Runnoff", 
+       x = "Aridity", 
+       y = "Rainfall",
+       color = "Mean Flow") 
+```
+
+##Model Building
+
+```{r}
+set.seed(123)
+# Bad form to perform simple transformations on the outcome variable within a 
+# recipe. So, we'll do it here.
+camels <- camels |> 
+  mutate(logQmean = log(q_mean))
+
+# Generate the split
+camels_split <- initial_split(camels, prop = 0.8)
+camels_train <- training(camels_split)
+camels_test  <- testing(camels_split)
+
+camels_cv <- vfold_cv(camels_train, v = 10)
+```
+
+```{r}
+# Create a recipe to preprocess the data
+rec <-  recipe(logQmean ~ aridity + p_mean, data = camels_train) %>%
+  # Log transform the predictor variables (aridity and p_mean)
+  step_log(all_predictors()) %>%
+  # Add an interaction term between aridity and p_mean
+  step_interact(terms = ~ aridity:p_mean) |> 
+  # Drop any rows with missing values in the pred
+  step_naomit(all_predictors(), all_outcomes())
+```
+
+```{r}
+# Prepare the data
+baked_data <- prep(rec, camels_train) |> 
+  bake(new_data = NULL)
+
+# Interaction with lm
+#  Base lm sets interaction terms with the * symbol
+lm_base <- lm(logQmean ~ aridity * p_mean, data = baked_data)
+summary(lm_base)
+```
+
+#Correct Version
+
+```{r}
+test_data <-  bake(prep(rec), new_data = camels_test)
+test_data$lm_pred <- predict(lm_base, newdata = test_data)
+
+metrics(test_data, truth = logQmean, estimate = lm_pred)
+
+ggplot(test_data, aes(x = logQmean, y = lm_pred, colour = aridity)) +
+  # Apply a gradient color scale
+  scale_color_gradient2(low = "brown", mid = "orange", high = "darkgreen") +
+  geom_point() +
+  geom_abline(linetype = 2) +
+  theme_linedraw() + 
+  labs(title = "Linear Model: Observed vs Predicted",
+       x = "Observed Log Mean Flow",
+       y = "Predicted Log Mean Flow",
+       color = "Aridity")
+```
+
+#Using a Workflow
+
+```{r}
+# Define model
+lm_model <- linear_reg() %>%
+  # define the engine
+  set_engine("lm") %>%
+  # define the mode
+  set_mode("regression")
+
+# Instantiate a workflow ...
+lm_wf <- workflow() %>%
+  # Add the recipe
+  add_recipe(rec) %>%
+  # Add the model
+  add_model(lm_model) %>%
+  # Fit the model to the training data
+  fit(data = camels_train) 
+
+# Extract the model coefficients from the workflow
+summary(extract_fit_engine(lm_wf))$coefficients
+
+# From the base implementation
+summary(lm_base)$coefficients
+```
+
+#Making Predictions
+
+```{r}
+#
+lm_data <- augment(lm_wf, new_data = camels_test)
+dim(lm_data)
+```
+
+#Model Evaluations
+
+```{r}
+metrics(lm_data, truth = logQmean, estimate = .pred)
+
+ggplot(lm_data, aes(x = logQmean, y = .pred, colour = aridity)) +
+  scale_color_viridis_c() +
+  geom_point() +
+  geom_abline() +
+  theme_linedraw()
+```
+
+#Switch it up
+
+```{r}
+library(baguette)
+rf_model <- rand_forest() %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("regression")
+
+rf_wf <- workflow() %>%
+  # Add the recipe
+  add_recipe(rec) %>%
+  # Add the model
+  add_model(rf_model) %>%
+  # Fit the model
+  fit(data = camels_train) 
+```
+
+#Predictions
+
+```{r}
+rf_data <- augment(rf_wf, new_data = camels_test)
+dim(rf_data)
+```
+
+```{r}
+metrics(rf_data, truth = logQmean, estimate = .pred)
+
+ggplot(rf_data, aes(x = logQmean, y = .pred, colour = aridity)) +
+  scale_color_viridis_c() +
+  geom_point() +
+  geom_abline() +
+  theme_linedraw()
+```
+
+#Workflow set approach
+
+```{r}
+wf <- workflow_set(list(rec), list(lm_model, rf_model)) %>%
+  workflow_map('fit_resamples', resamples = camels_cv) 
+
+autoplot(wf)
+
+rank_results(wf, rank_metric = "rsq", select_best = TRUE)
+```
+
+## Question 3
+
+```{r}
+xgBoost_model<-boost_tree(mode = "regression", trees = 1000)%>%
+  set_engine('xgboost')
+
+
+library(baguette)
+Baguette_model<-bag_mlp(mode = "regression")%>%
+  set_engine('nnet')
+
+xgbm_wf <- workflow() %>%
+  # Add the recipe
+  add_recipe(rec) %>%
+  # Add the model
+  add_model(xgBoost_model) %>%
+  # Fit the model
+  fit(data = camels_train) %>%
+  augment(camels_train)
+
+baguettem_wf <- workflow() %>%
+  # Add the recipe
+  add_recipe(rec) %>%
+  # Add the model
+  add_model(Baguette_model) %>%
+  # Fit the model
+  fit(data = camels_train)%>%
+  augment(camels_train)
+```
+
+```{r}
+metrics(baguettem_wf, truth = logQmean, estimate = .pred)
+metrics(xgbm_wf,truth=logQmean,estimate=.pred)
+```
+
+```{r}
+ggplot(xgbm_wf, aes(x = logQmean, y = .pred, colour = aridity)) +
+  scale_color_viridis_c() +
+  geom_point() +
+  geom_abline() +
+  theme_linedraw()
+
+ggplot(baguettem_wf, aes(x = logQmean, y = .pred, colour = aridity)) +
+  scale_color_viridis_c() +
+  geom_point() +
+  geom_abline() +
+  theme_linedraw()
+```
+
+```{r}
+wf_xg<-workflow_set(list(rec),list(lm_model, rf_model))%>%
+  workflow_map('fit_resamples', resamples=camels_cv)
+autoplot(wf_xg)
+```
+
+The model I would use moving forward is the boost tree model because the data closely follows a 1:1 ratio.
+
+## Do it Yourself!
+
+### Data splitting
+
+```{r}
+set.seed(422442)
+(resample_split <- initial_split(camels, prop = 0.75))
+
+camels_train<-training(resample_split)
+glimpse(camels_train)
+
+camels_test<-testing(resample_split)
+glimpse(camels_test)
+
+nrow(camels_train)*1/10
+vfold_cv(camels_train,v=10)
+```
+
+### Recipe
+
+```{r}
+
+logQmean ~ area_gages2 + p_mean + pet_mean + aridity + slope_mean
+
+rec2 <- recipe(logQmean ~ area_gages2 + p_mean + pet_mean + aridity + slope_mean, 
+              data = camels_train) %>%
+  step_log(all_predictors()) %>%  # Apply log transformation to all predictors
+  step_naomit(all_predictors()) %>%  # Remove missing values from all predictors
+  step_normalize(all_numeric_predictors())  # Standardize numeric predictors
+
+rec_prep2 <- prep(rec2, training = camels_train)
+
+# Apply preprocessing
+camels_train_processed <- bake(rec_prep2, new_data = camels_train)
+camels_test_processed <- bake(rec_prep2, new_data = camels_test)
+
+
+```
+
+### Define 3 Models
+
+```{r}
+# Load necessary libraries
+library(tidymodels)
+
+# Define the random forest model
+rf_model <- rand_forest()%>%
+  set_mode("regression")%>%
+  set_engine("ranger")%>%
+  set_args(mtry = 3, trees = 1000, min_n = 10)
+
+# Define the linear regression model
+lr_model <- linear_reg()%>%
+  set_mode("regression") %>%
+  set_engine("lm")
+
+# Define the decision tree model
+b_mod<- boost_tree()%>%
+  set_engine('xgboost')%>%
+  set_mode('regression')
+
+nn_mod<- mlp(hidden=10)%>%
+  set_engine('nnet')%>%
+  set_mode('regression')
+
+# View the models
+rf_model
+lr_model
+b_mod
+nn_mod
+```
+
+### Workflow Set
+
+```{r}
+workflow_rf <- workflow() %>%
+  add_recipe(rec2) %>%
+  add_model(rf_model)
+
+workflow_lr <- workflow() %>%
+  add_recipe(rec2) %>%
+  add_model(lr_model) 
+
+workflow_nn <- workflow() %>%
+  add_recipe(rec2) %>%
+  add_model(nn_mod)
+
+workflow_boost <- workflow() %>%
+  add_recipe(rec2) %>%
+  add_model(b_mod)
+
+set.seed(123)  # For reproducibility
+cv_folds <- vfold_cv(camels_train, v = 10)  # 10-fold cross-validation
+
+# Fit the models to the resamples
+rf_results <- fit_resamples(workflow_rf, resamples = cv_folds)
+lr_results <- fit_resamples(workflow_lr, resamples = cv_folds)
+nn_results <- fit_resamples(workflow_nn, resamples = cv_folds)
+boost_results<-fit_resamples(workflow_boost, resamples=cv_folds)
+
+# View the results
+rf_results
+lr_results
+nn_results
+boost_results
+```
+
+### Evaluation
+
+```{r, echo=TRUE}
+library(tidymodels)
+library(ggplot2)
+
+# Extract the resampling results
+rf_metrics <- collect_metrics(rf_results)
+lr_metrics <- collect_metrics(lr_results)
+nn_metrics <- collect_metrics(nn_results)
+boost_metrics <- collect_metrics(boost_results)
+
+# Combine the metrics into one data frame for plotting
+all_metrics <- bind_rows(
+  mutate(rf_metrics, model = "Random Forest"),
+  mutate(lr_metrics, model = "Linear Regression"),
+  mutate(nn_metrics, model = "Neural Network"),
+  mutate(boost_metrics, model = "Boosted Tree")
+)
+
+# Plot the metrics (e.g., RMSE) across models
+ggplot(all_metrics, aes(x = model, y = mean, fill = model)) +
+  geom_boxplot() +
+  labs(title = "Model Comparison: RMSE", x = "Model", y = "RMSE") +
+  theme_minimal()
+
+# Rank the results based on RMSE (or another metric)
+rf_ranked <- rank_results(rf_results)
+lr_ranked <- rank_results(lr_results)
+nn_ranked <- rank_results(nn_results)
+boost_ranked <- rank_results(boost_results)
+
+# Display the ranked results
+rf_ranked
+lr_ranked
+nn_ranked
+boost_ranked
+
+
+```
+
+Random forest is the best model for this workflow data set. This is because we have a medium size data set which is slightly too complex for linear regression. The data is not complex enough for neural network.
+
+### Extract and Evaluate
+
+```{r}
+# Load necessary libraries
+library(tidymodels)
+library(ggplot2)
+
+# Define the Random Forest model
+rf_model <- rand_forest(mode = "regression", engine = "ranger") %>%
+  set_args(mtry = 3, trees = 500, min_n = 10)
+
+# Define the recipe (you can replace this with your own)
+rec2 <- recipe(logQmean ~ area_gages2 + p_mean + pet_mean + aridity + slope_mean, 
+              data = camels_train) %>%
+  step_log(all_predictors()) %>%
+  step_naomit(all_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+
+# Create the workflow
+workflow_rf <- workflow() %>%
+  add_recipe(rec2) %>%
+  add_model(rf_model)
+
+# Fit the model to the training data
+rf_fit <- fit(workflow_rf, data = camels_train)
+
+# Make predictions on the test data
+rf_predictions <- augment(rf_fit, new_data = camels_test)
+
+# Plot the observed vs. predicted values
+ggplot(rf_predictions, aes(x = logQmean, y = .pred)) +
+  geom_point(color = "cornflowerblue", alpha = 0.5) +
+  geom_abline(slope = 1, intercept = 0, color = "lightpink", linetype = "dashed") +  # Line of perfect prediction
+  labs(
+    title = "Observed vs Predicted Values (Random Forest)",
+    x = "Observed Values (logQmean)",
+    y = "Predicted Values (logQmean)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  scale_color_gradient(low = "cyan", high = "maroon")
+
+```
+
+Analyzing the data we can see that the random forest model made accurate predictions because the code closely follows the trend line. This indicates the the random forest model has high predictive success.
