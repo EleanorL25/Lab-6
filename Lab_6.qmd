@@ -1,6 +1,6 @@
----
+------------------------------------------------------------------------
 
----
+------------------------------------------------------------------------
 
 ```{r}
 options(repos = c(CRAN = "https://cran.rstudio.com/"))
@@ -497,17 +497,25 @@ ggplot(all_metrics, aes(x = model, y = mean, fill = model)) +
   theme_minimal()
 
 # Rank the results based on RMSE (or another metric)
-rf_ranked <- rank_results(rf_results)
-lr_ranked <- rank_results(lr_results)
-nn_ranked <- rank_results(nn_results)
-boost_ranked <- rank_results(boost_results)
+#rf_ranked <- rank_results(rf_results)
+#lr_ranked <- rank_results(lr_results)
+#nn_ranked <- rank_results(nn_results)
+#boost_ranked <- rank_results(boost_results)
 
 # Display the ranked results
-rf_ranked
-lr_ranked
-nn_ranked
-boost_ranked
+#rf_ranked
+#lr_ranked
+#nn_ranked
+#boost_ranked
 
+#Error in `rank_results()`:
+#! x must be a workflow set, not a <resample_results> object.
+#Backtrace:
+ #   ▆
+ #1. └─workflowsets::rank_results(rf_results)
+ #2.   └─workflowsets:::check_wf_set(x)
+ #3.     └─cli::cli_abort(...)
+ #4.       └─rlang::abort(...)
 
 ```
 
