@@ -1,17 +1,14 @@
-------------------------------------------------------------------------
-
 ---
 project:
-  title: "csu_ess_lab6"
+  title: "csu-ess-lab6"
   author: "Eleanor Lindsey"
   output-dir: docs
   type: website
 format: 
   html:
     self-contained: true
+  
 ---
-
-------------------------------------------------------------------------
 
 ```{r}
 options(repos = c(CRAN = "https://cran.rstudio.com/"))
