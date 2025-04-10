@@ -384,22 +384,31 @@ full_pred = fit(final_wf, data = camels) |>
 ```{r}
 full_pred_mutated<- full_pred%>%
   mutate(residuals=(.pred-logQmean)^2)
+colnames(full_pred_mutated)
 ```
 
 #### ggplot Predictions
 
 ```{r}
-
+predictions<-ggplot(full_pred, aes(x=.pred, y=logQmean))+
+  geom_point()+
+  geom_smooth(method = 'lm')+
+  labs(x="predictions", y="LogQMean", title="Random Forest Model Predictions")
+predictions
 ```
 
 #### ggplot Residuals
 
 ```{r}
-
+residuals<-ggplot(full_pred_mutated, aes(x=residuals, y=logQmean))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  labs(x="residuals", y="LogQMean", title="Residuals for Random Forest Model")
+residuals
 ```
 
 #### Combined Figure
 
 ```{r}
-
+ggarrange(residuals, predictions)
 ```
