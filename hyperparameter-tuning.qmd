@@ -3,6 +3,8 @@ title: "Lab_8"
 author: "Eleanor Lindsey"
 format: html
 editor: visual
+execute:
+  echo: true
 ---
 
 ## 
@@ -153,7 +155,7 @@ rec <-  recipe(logQmean ~ aridity + p_mean, data = camels_train) %>%
   step_naomit(all_predictors(), all_outcomes())
 ```
 
-### Defining Models and Workflows 
+### Defining Models and Workflows
 
 ```{r}
 # Define model
@@ -348,6 +350,12 @@ collect_metrics(final_fit)
 ```
 
 #### Collect Metrics Interpretation
+
+The r squared value (rsq) explains about 75% of the variance in the random forest model. This value demonstrates relatively strong statistical evidence in the correlation of the variables.
+
+An RMSE of 0.5678406 indicates that, on average, the model's predictions are off by about 0.568 units in the original scale of the target variable.
+
+An MAE of 0.3497950 means that, on average, the model’s predictions are off by about 0.350 units. The lower value indicates strong preformance.
 
 #### Collect Predictions
 
