@@ -32,7 +32,7 @@ types <- c("clim", "geol", "soil", "topo", "vege", "hydro")
 # Where the files live online ...
 remote_files  <- glue('{root}/camels_{types}.txt')
 # where we want to download the data ...
-local_files   <- glue('docs/data/camels_{types}.txt')
+local_files   <- glue('data/camels_{types}.txt')
 walk2(remote_files, local_files, download.file, quiet = TRUE)
 # Read and merge data
 camels <- map(local_files, read_delim, show_col_types = FALSE) 
@@ -171,12 +171,6 @@ lm_wf <- workflow() %>%
   add_model(lm_model) %>%
   # Fit the model to the training data
   fit(data = camels_train) 
-
-# Extract the model coefficients from the workflow
-summary(extract_fit_engine(lm_wf))$coefficients
-
-# From the base implementation
-summary(lm_base)$coefficients
 
 rf_model <- rand_forest() %>%
   set_engine("ranger", importance = "impurity") %>%
