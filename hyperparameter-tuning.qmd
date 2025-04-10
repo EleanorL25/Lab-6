@@ -1,0 +1,405 @@
+---
+title: "Lab_8"
+author: "Eleanor Lindsey"
+format: html
+editor: visual
+---
+
+## 
+
+install.packages('visdat')
+
+```{r}
+library(dplyr)
+library(tidyverse)
+library(tidymodels)
+library(powerjoin)
+library(glue)
+library(vip)
+library(baguette)
+library(visdat)
+library(ggpubr)
+library(ggplot2)
+```
+
+### Load in the data
+
+```{r}
+root  <- 'https://gdex.ucar.edu/dataset/camels/file'
+download.file('https://gdex.ucar.edu/dataset/camels/file/camels_attributes_v2.0.pdf', 
+              'data/camels_attributes_v2.0.pdf')
+types <- c("clim", "geol", "soil", "topo", "vege", "hydro")
+# Where the files live online ...
+remote_files  <- glue('{root}/camels_{types}.txt')
+# where we want to download the data ...
+local_files   <- glue('docs/data/camels_{types}.txt')
+walk2(remote_files, local_files, download.file, quiet = TRUE)
+# Read and merge data
+camels <- map(local_files, read_delim, show_col_types = FALSE) 
+camels <- power_full_join(camels ,by = 'gauge_id')
+```
+
+### Clean the Data
+
+```{r}
+camels%>%
+  select(aridity, p_mean, q_mean)%>%
+  drop_na()%>% 
+  cor()
+
+plot_1<-ggplot(data = camels, aes(x = gauge_lon, y = gauge_lat)) +
+  borders("state", colour = "gray50") +
+  geom_point(aes(color = aridity)) +
+  labs(title='Levels of Aridity',
+       x='Longitude',
+       y='Latitude') +
+  scale_color_gradient(low = "dodgerblue", high = "forestgreen") +
+  ggthemes::theme_map()
+
+plot_2 <- ggplot(data = camels, aes(x = gauge_lon, y = gauge_lat)) +
+  borders("state", colour = "gray50") +
+  geom_point(aes(color = p_mean)) +
+  labs(title = 'Mean Daily Precipitation',
+       x = 'Longitude',
+       y = 'Latitude') +
+  scale_color_gradient(low = "purple", high = "pink") +
+  ggthemes::theme_map()
+
+ggarrange(plot_1, plot_2, n_col=2)
+
+```
+
+### Visual EDA
+
+```{r}
+# Create a scatter plot of aridity vs rainfall
+ggplot(camels, aes(x = aridity, y = p_mean)) +
+  # Add points colored by mean flow
+  geom_point(aes(color = q_mean)) +
+  # Add a linear regression line
+  geom_smooth(method = "lm", color = "red", linetype = 2) +
+  # Apply the viridis color scale
+  scale_color_viridis_c() +
+  # Add a title, axis labels, and theme (w/ legend on the bottom)
+  theme_linedraw() + 
+  theme(legend.position = "bottom") + 
+  labs(title = "Aridity vs Rainfall vs Runnoff", 
+       x = "Aridity", 
+       y = "Rainfall",
+       color = "Mean Flow")
+```
+
+```{r}
+ggplot(camels, aes(x = aridity, y = p_mean)) +
+  geom_point(aes(color = q_mean)) +
+  geom_smooth(method = "lm") +
+  scale_color_viridis_c() +
+  # Apply log transformations to the x and y axes
+  scale_x_log10() + 
+  scale_y_log10() +
+  theme_linedraw() +
+  theme(legend.position = "bottom") + 
+  labs(title = "Aridity vs Rainfall vs Runnoff", 
+       x = "Aridity", 
+       y = "Rainfall",
+       color = "Mean Flow")
+```
+
+```{r}
+ggplot(camels, aes(x = aridity, y = p_mean)) +
+  geom_point(aes(color = q_mean)) +
+  geom_smooth(method = "lm") +
+  # Apply a log transformation to the color scale
+  scale_color_viridis_c(trans = "log") +
+  scale_x_log10() + 
+  scale_y_log10() +
+  theme_linedraw() +
+  theme(legend.position = "bottom",
+        # Expand the legend width ...
+        legend.key.width = unit(2.5, "cm"),
+        legend.key.height = unit(.5, "cm")) + 
+  labs(title = "Aridity vs Rainfall vs Runnoff", 
+       x = "Aridity", 
+       y = "Rainfall",
+       color = "Mean Flow") 
+```
+
+### Splitting the Data
+
+```{r}
+set.seed(123)
+# Bad form to perform simple transformations on the outcome variable within a 
+# recipe. So, we'll do it here.
+camels <- camels |> 
+  mutate(logQmean = log(q_mean))
+
+# Generate the split
+camels_split <- initial_split(camels, prop = 0.8)
+camels_train <- training(camels_split)
+camels_test  <- testing(camels_split)
+
+camels_cv <- vfold_cv(camels_train, v = 10)
+```
+
+### Creating a Recipe
+
+```{r}
+rec <-  recipe(logQmean ~ aridity + p_mean, data = camels_train) %>%
+  # Log transform the predictor variables (aridity and p_mean)
+  step_log(all_predictors()) %>%
+  # Add an interaction term between aridity and p_mean
+  step_interact(terms = ~ aridity:p_mean) |> 
+  # Drop any rows with missing values in the pred
+  step_naomit(all_predictors(), all_outcomes())
+```
+
+### Defining Models and Workflows 
+
+```{r}
+# Define model
+lm_model <- linear_reg() %>%
+  # define the engine
+  set_engine("lm") %>%
+  # define the mode
+  set_mode("regression")
+
+# Instantiate a workflow ...
+lm_wf <- workflow() %>%
+  # Add the recipe
+  add_recipe(rec) %>%
+  # Add the model
+  add_model(lm_model) %>%
+  # Fit the model to the training data
+  fit(data = camels_train) 
+
+# Extract the model coefficients from the workflow
+summary(extract_fit_engine(lm_wf))$coefficients
+
+# From the base implementation
+summary(lm_base)$coefficients
+
+rf_model <- rand_forest() %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("regression")
+
+rf_wf <- workflow() %>%
+  # Add the recipe
+  add_recipe(rec) %>%
+  # Add the model
+  add_model(rf_model) %>%
+  # Fit the model
+  fit(data = camels_train) 
+
+b_model<- boost_tree()%>%
+  set_engine('xgboost')%>%
+  set_mode('regression')
+
+bm_wf<- workflow()%>%
+  add_recipe(rec)%>%
+  add_model(b_model)%>%
+  fit(data=camels_train)
+```
+
+### Predictions
+
+```{r}
+lm_data <- augment(lm_wf, new_data = camels_test)
+dim(lm_data)
+
+rf_data <- augment(rf_wf, new_data = camels_test)
+dim(rf_data)
+
+bm_data<- augment(bm_wf, new_data=camels_test)
+dim(bm_data)
+```
+
+### Model Evaluations
+
+```{r}
+metrics(lm_data, truth = logQmean, estimate = .pred)
+
+ggplot(lm_data, aes(x = logQmean, y = .pred, colour = aridity)) +
+  scale_color_viridis_c() +
+  geom_point() +
+  geom_abline() +
+  labs(title='Linear Regression Model Evaluation')+
+  theme_linedraw()
+
+metrics(rf_data, truth = logQmean, estimate = .pred)
+
+ggplot(rf_data, aes(x = logQmean, y = .pred, colour = aridity)) +
+  scale_color_viridis_c() +
+  geom_point() +
+  geom_abline() +
+  labs(title='Random Forest Model Evaluation')+
+  theme_linedraw()
+
+metrics(bm_data, truth = logQmean, estimate = .pred)
+
+ggplot(bm_data, aes(x = logQmean, y = .pred, colour = aridity)) +
+  scale_color_viridis_c() +
+  geom_point() +
+  geom_abline() +
+  labs(title='BoostTree Model Evaluation')+
+  theme_linedraw()
+```
+
+### Workflow Approach
+
+```{r}
+wf <- workflow_set(list(rec), list(Linear=lm_model, Ranger=rf_model, Boost=b_model)) %>%
+  workflow_map('fit_resamples', resamples = camels_cv)%>%
+  workflow_map(resamples=camels_cv, 
+               metrics=metric_set(rsq, rmse, mae))
+
+autoplot(wf)
+
+rank_results(wf, rank_metric = "rsq", select_best = TRUE)
+```
+
+Based on the testing of the random forest, boost tree, and linear regression models, the random forest model is the best choice. It has a low mean absolute error and rmse which mean there are low levels of errors detected.
+
+The model I selected is the Random forest model with a ranger engine and a regression mode. It works well because it is designed to take multiple predictors and return a prediction based on hyperparameters within the data.
+
+### Building the Specified Model
+
+```{r}
+
+# Define the model with tuneable parameters
+rf_model <- rand_forest(min_n = tune(), trees = tune()) %>%
+  set_engine("ranger", importance = "impurity") %>%
+  set_mode("regression")
+
+# 2. Create the workflow
+rf_wf_tuned <- workflow() %>%
+  add_recipe(rec) %>%
+  add_model(rf_model)
+```
+
+### Check the Tuneable Values
+
+```{r}
+dials<-extract_parameter_set_dials(rf_wf_tuned)
+
+dials$object
+```
+
+### Defining the Search Space
+
+```{r}
+my.grid<-dials%>%
+  grid_latin_hypercube(size = 20)
+```
+
+### Tuning the Model
+
+```{r}
+model_params <-  tune_grid(
+    rf_wf_tuned,
+    resamples = camels_cv,
+    grid = my.grid,
+    metrics = metric_set(rmse, rsq, mae),
+    control = control_grid(save_pred = TRUE)
+  )
+
+autoplot(model_params)
+```
+
+From what I see as minimal node size decreases, so does rmse and mae while rsq increases. This indicates high correlation and low error between the data set and the minimal node size. There is no obvious correlation between the number of trees and the data set.
+
+### Check the Skill of the Tuned Model
+
+```{r}
+collect_metrics(model_params)
+tree_metrics = metric_set(rsq, rmse, mae)
+
+```
+
+#### Collect Metrics Interpretation
+
+From the table I can interpret that data has a very low standard error which supports the significance of the testing.
+
+#### Show Best
+
+```{r}
+show_best(model_params, metric = "rsq") 
+show_best(model_params, metric = "rmse") 
+show_best(model_params, metric = "mae")
+```
+
+#### Show Best Interpretation
+
+based on MAE the best hyper parameter for this test is the set with 336 trees and a 25 minimum number of trees
+
+```{r}
+hp_best<- show_best(model_params, metric = "mae", n = 1)
+
+print(hp_best)
+```
+
+#### Finalizing the Model
+
+```{r}
+final_wf<-finalize_workflow(rf_wf_tuned,hp_best)
+
+```
+
+### Final Model Verification
+
+```{r}
+final_fit <- last_fit(final_wf, camels_split, metrics =tree_metrics )
+
+collect_metrics(final_fit)
+
+```
+
+#### Collect Metrics Interpretation
+
+#### Collect Predictions
+
+```{r}
+collect_predictions(final_fit) |> 
+  ggplot(aes(x = .pred, y = logQmean)) + 
+  geom_point() +
+  geom_abline() + 
+  geom_smooth(method = "lm") + 
+  theme_linedraw() + 
+  labs(title = "Final Fit", 
+       x = "Predicted (Log10)", 
+       y = "Actual (Log10)")
+```
+
+### Building a Map
+
+#### Augment
+
+```{r}
+full_pred = fit(final_wf, data = camels) |>
+  augment(new_data = camels) 
+
+```
+
+#### Mutate
+
+```{r}
+full_pred_mutated<- full_pred%>%
+  mutate(residuals=(.pred-logQmean)^2)
+```
+
+#### ggplot Predictions
+
+```{r}
+
+```
+
+#### ggplot Residuals
+
+```{r}
+
+```
+
+#### Combined Figure
+
+```{r}
+
+```
