@@ -384,20 +384,20 @@ colnames(full_pred_mutated)
 #### ggplot Predictions
 
 ```{r}
-predictions<-ggplot(full_pred, aes(x=.pred, y=logQmean))+
+predictions<-ggplot(full_pred, aes(x=logQmean, y=.pred))+
   geom_point()+
   geom_smooth(method = 'lm')+
-  labs(x="predictions", y="LogQMean", title="Random Forest Model Predictions")
+  labs(x="LogQMean", y="predictions", title="Random Forest Model Predictions")
 predictions
 ```
 
 #### ggplot Residuals
 
 ```{r}
-residuals<-ggplot(full_pred_mutated, aes(x=residuals, y=logQmean))+
+residuals<-ggplot(full_pred_mutated, aes(x=logQmean, y=residuals))+
   geom_point()+
   geom_smooth(method='lm')+
-  labs(x="residuals", y="LogQMean", title="Residuals for Random Forest Model")
+  labs(x="LogQMean", y="residuals", title="Residuals for Random Forest Model")
 residuals
 ```
 

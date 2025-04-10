@@ -761,10 +761,10 @@ grob.</code></pre>
 <section id="ggplot-predictions" class="level4">
 <h4 class="anchored" data-anchor-id="ggplot-predictions">ggplot Predictions</h4>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb77"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a>predictions<span class="ot">&lt;-</span><span class="fu">ggplot</span>(full_pred, <span class="fu">aes</span>(<span class="at">x=</span>.pred, <span class="at">y=</span>logQmean))<span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb77"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb77-1"><a href="#cb77-1" aria-hidden="true" tabindex="-1"></a>predictions<span class="ot">&lt;-</span><span class="fu">ggplot</span>(full_pred, <span class="fu">aes</span>(<span class="at">x=</span>logQmean, <span class="at">y=</span>.pred))<span class="sc">+</span></span>
 <span id="cb77-2"><a href="#cb77-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()<span class="sc">+</span></span>
 <span id="cb77-3"><a href="#cb77-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_smooth</span>(<span class="at">method =</span> <span class="st">'lm'</span>)<span class="sc">+</span></span>
-<span id="cb77-4"><a href="#cb77-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x=</span><span class="st">"predictions"</span>, <span class="at">y=</span><span class="st">"LogQMean"</span>, <span class="at">title=</span><span class="st">"Random Forest Model Predictions"</span>)</span>
+<span id="cb77-4"><a href="#cb77-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x=</span><span class="st">"LogQMean"</span>, <span class="at">y=</span><span class="st">"predictions"</span>, <span class="at">title=</span><span class="st">"Random Forest Model Predictions"</span>)</span>
 <span id="cb77-5"><a href="#cb77-5" aria-hidden="true" tabindex="-1"></a>predictions</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>`geom_smooth()` using formula = 'y ~ x'</code></pre>
@@ -789,10 +789,10 @@ grob.</code></pre>
 <section id="ggplot-residuals" class="level4">
 <h4 class="anchored" data-anchor-id="ggplot-residuals">ggplot Residuals</h4>
 <div class="cell">
-<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>residuals<span class="ot">&lt;-</span><span class="fu">ggplot</span>(full_pred_mutated, <span class="fu">aes</span>(<span class="at">x=</span>residuals, <span class="at">y=</span>logQmean))<span class="sc">+</span></span>
+<div class="sourceCode cell-code" id="cb81"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb81-1"><a href="#cb81-1" aria-hidden="true" tabindex="-1"></a>residuals<span class="ot">&lt;-</span><span class="fu">ggplot</span>(full_pred_mutated, <span class="fu">aes</span>(<span class="at">x=</span>logQmean, <span class="at">y=</span>residuals))<span class="sc">+</span></span>
 <span id="cb81-2"><a href="#cb81-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>()<span class="sc">+</span></span>
 <span id="cb81-3"><a href="#cb81-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_smooth</span>(<span class="at">method=</span><span class="st">'lm'</span>)<span class="sc">+</span></span>
-<span id="cb81-4"><a href="#cb81-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x=</span><span class="st">"residuals"</span>, <span class="at">y=</span><span class="st">"LogQMean"</span>, <span class="at">title=</span><span class="st">"Residuals for Random Forest Model"</span>)</span>
+<span id="cb81-4"><a href="#cb81-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">labs</span>(<span class="at">x=</span><span class="st">"LogQMean"</span>, <span class="at">y=</span><span class="st">"residuals"</span>, <span class="at">title=</span><span class="st">"Residuals for Random Forest Model"</span>)</span>
 <span id="cb81-5"><a href="#cb81-5" aria-hidden="true" tabindex="-1"></a>residuals</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stderr">
 <pre><code>`geom_smooth()` using formula = 'y ~ x'</code></pre>
