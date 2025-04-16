@@ -1,7 +1,9 @@
 ---
 title: "Lab_8"
 author: "Eleanor Lindsey"
-format: html
+format: 
+  html:
+   self-contained: true
 editor: visual
 execute:
   echo: true
