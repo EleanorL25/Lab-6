@@ -9,10 +9,6 @@ execute:
   echo: true
 ---
 
-## 
-
-install.packages('visdat')
-
 ```{r}
 library(dplyr)
 library(tidyverse)
